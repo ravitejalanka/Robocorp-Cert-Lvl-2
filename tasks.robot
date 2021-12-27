@@ -12,6 +12,7 @@ Library           RPA.Archive
 Library           OperatingSystem
 Library           RPA.Dialogs
 Library           RPA.Robocorp.Vault
+Library           RPA.FileSystem
 
 *** Variables ***
 #${url}           https://robotsparebinindustries.com/#/robot-order
@@ -26,6 +27,9 @@ ${order-another}    id:order-another
 ${robot-preview-image}    id:robot-preview-image
 ${modal}          css:button.btn.btn-warning
 ${receipt}        id:receipt
+${receipt_folder}    ${CURDIR}${/}output${/}receipts
+${image_folder}    ${CURDIR}${/}output${/}images
+${receiptZip}     ${CURDIR}${/}output${/}receipts.zip
 
 *** Keywords ***
 Get Secret file
@@ -64,7 +68,7 @@ Preview the robot
     Wait Until Element Is Visible    locator=${robot-preview-image}
 
 Submit the order
-    Wait Until Keyword Succeeds    5x    0.2 sec    Submit
+    Wait Until Keyword Succeeds    10x    0.3 sec    Submit
 
 Submit
     Click Button    locator=${submit}
@@ -74,30 +78,54 @@ Store the receipt as a PDF file
     [Arguments]    ${orderNumber}
     Wait Until Element Is Visible    ${receipt}
     ${receipt}=    Get Element Attribute    ${receipt}    outerHTML
-    Html To Pdf    ${receipt}    ${CURDIR}${/}output${/}receipts${/}${orderNumber}.pdf
-    Set Local Variable    ${pdfReceipt}    ${CURDIR}${/}output${/}receipts${/}${orderNumber}.pdf
+    Html To Pdf    ${receipt}    ${receipt_folder}${/}${orderNumber}.pdf
+    Set Local Variable    ${pdfReceipt}    ${receipt_folder}${/}${orderNumber}.pdf
     [Return]    ${pdfReceipt}
 
 Take a screenshot of the robot
     [Arguments]    ${orderNumber}
-    ${robot}=    Capture Element Screenshot    ${robot-preview-image}    ${CURDIR}${/}output${/}prints${/}${orderNumber}.jpeg
+    ${robot}=    Capture Element Screenshot    ${robot-preview-image}    ${image_folder}${/}${orderNumber}.jpeg
     [Return]    ${robot}
 
 Embed the robot screenshot to the receipt PDF file
-    [Arguments]    ${screenshot}    ${pdf2}
-    Open Pdf    ${pdf2}
-    ${files}=    Create List    ${pdf2}    ${screenshot}
-    Add Files To PDF    ${files}    ${pdf2}
-    Close Pdf    ${pdf2}
+    [Arguments]    ${screenshot}    ${receiptPdf}
+    Open Pdf    ${receiptPdf}
+    ${files}=    Create List    ${receiptPdf}    ${screenshot}
+    Add Files To PDF    ${files}    ${receiptPdf}
+    Close Pdf    ${receiptPdf}
 
 Go to order another robot
     Click Button    ${order-another}
 
 Create a ZIP file of the receipts
-    Archive Folder With Zip    ${CURDIR}${/}output${/}receipts    ${CURDIR}${/}output${/}receipts.zip
+    Archive Folder With Zip    ${receipt_folder}    ${CURDIR}${/}output${/}receipts.zip
+
+Check If Directory Exists
+    [Arguments]    ${dir}
+    ${flag}=    Does Directory Exist    path=${dir}
+    [Return]    ${flag}
+
+Clean Up
+    Run Keyword If File Exists    ${receiptZip}    keyword=Delete Zip While Clean Up
+    ${receiptsExists}=    Check If Directory Exists    ${receipt_folder}
+    ${imagesExists}=    Check If Directory Exists    ${image_folder}
+    Remove Or Create Directory    ${receiptsExists}    ${receipt_folder}
+    Remove Or Create Directory    ${imagesExists}    ${image_folder}
+
+Delete Zip While Clean Up
+    Remove File    path=${receiptZip}
+
+Remove Or Create Directory
+    [Arguments]    ${folderFlag}    ${folderPath}
+    IF    ${folderFlag}
+        OperatingSystem.Remove Directory    ${folderPath}    recursive=True
+    ELSE
+        Create Directory    ${folderPath}
+    END
 
 *** Tasks ***
 Order robots from RobotSpareBin Industries Inc
+    Clean Up
     Open the robot order website
     ${orders}=    Get orders
     FOR    ${order}    IN    @{orders}
@@ -111,4 +139,4 @@ Order robots from RobotSpareBin Industries Inc
         Go to order another robot
     END
     Create a ZIP file of the receipts
-    Close All Browsers
+    [Teardown]    Close Browser
